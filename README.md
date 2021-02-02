@@ -1,2 +1,3 @@
 # GetPositionFromTime
-Attempt at calculating current position in a map. No guarantees.
+Calculates the position at a given time
+Can also find the times in a map that are associated with a given position
