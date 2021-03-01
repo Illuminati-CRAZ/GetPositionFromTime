@@ -16,6 +16,7 @@ window_hovered = false
 
 function draw()
     window_hovered = false
+    resetCache()
     draw1()
     draw2()
     state.IsWindowHovered = window_hovered
@@ -64,37 +65,58 @@ function draw2()
     imgui.End()
 end
 
-function getPositionFromTime(time)
-    --[[
-        if using this function multiple times in one frame,
-        it may be faster to set ScrollVelocities = map.ScrollVelocities in draw()
-        and then set local svs = ScrollVelocities inside this function
-    ]]
-    local svs = map.ScrollVelocities
+function sv(time, multiplier) return utils.CreateScrollVelocity(time, multiplier) end
 
+function resetCache()
+    position_cache = {}
+end
+
+function getPositionFromTime(time, svs)
+    --for some reason, after adding svs to the map,
+    --if there are enough svs, the svs will take too long to be sorted by the game
+    --and as a result, position would be calculated incorrectly
+    --this can be prevented by supplying a custom sorted list of svs
+    local svs = svs or map.ScrollVelocities
+    
     if #svs == 0 or time < svs[1].StartTime then
         return math.floor(time * 100)
     end
-
-    local position = math.floor(svs[1].StartTime * 100)
-
-    local i = 2
-
-    while i <= #svs do
-        if time < svs[i].StartTime then
-            break
-        else
-            position = position + math.floor((svs[i].StartTime - svs[i - 1].StartTime) * svs[i - 1].Multiplier * 100)
-        end
-
-        i = i + 1
-    end
-
-    i = i - 1
-
+    
+    local i = getScrollVelocityIndexAt(time, svs)
+    local position = getPositionFromScrollVelocityIndex(i, svs)
     position = position + math.floor((time - svs[i].StartTime) * svs[i].Multiplier * 100)
     return position
 end
+
+function getPositionFromScrollVelocityIndex(i, svs)
+    if i < 1 then return end
+    
+    local position = position_cache[i]
+    if i == 1 then position = math.floor(svs[1].StartTime * 100) end
+    
+    if not position then
+        svs = svs or map.ScrollVelocities
+        position = getPositionFromScrollVelocityIndex(i - 1, svs) + 
+                 math.floor((svs[i].StartTime - svs[i - 1].StartTime) * svs[i - 1].Multiplier * 100)
+        position_cache[i] = position
+    end
+
+    return position
+end
+
+function getScrollVelocityIndexAt(time, svs)
+    svs = svs or map.ScrollVelocities
+    table.insert(svs, sv(1e304, 1))
+    
+    i = 1
+    while svs[i].StartTime <= time do
+        i = i + 1
+    end
+    
+    return i - 1
+end
+
+-----------------------------------------------------------------------------------------------------------------------------
 
 function getTimesFromPosition(target_position, range_start, range_stop)
     range_start = range_start or -1e304
@@ -132,6 +154,8 @@ function getTimesFromPosition(target_position, range_start, range_stop)
 
     return desired_times--, positions
 end
+
+-----------------------------------------------------------------------------------------------------------------------------
 
 function Update()
     current_position = getPositionFromTime(state.SongTime)
